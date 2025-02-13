@@ -267,4 +267,4 @@ echo "==========================================================================
 
 
 # prod
-k8s_clusters "localhost" "PROD-CLUSTER" "localhost" "8383" "129" "PROD_KUBE_CONFIG" "e-services" "prod-master-01"
+k8s_clusters "10.0.0.10" "PROD-CLUSTER" "10.0.0.30" "8383" "129" "PROD_KUBE_CONFIG" "e-services" "prod-master-01"
