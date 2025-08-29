@@ -5,15 +5,15 @@
 
 current_day=`date +%d-%m-%Y-%T`
 SSH_USER=ansible
-USER_HOME=/home/$SSH_USER
-WORKDIR=/home/$SSH_USER/scripts
+USER_HOME=/home/ansible
+WORKDIR=/home/ansible/scripts
 CONFIG_FOLDER=$WORKDIR/config
 
 ################### FOR GITLAB VARIABLES ###################
 
-GITLAB_TOKEN=`cat $WORKDIR/gitlab_token.txt`         ## create gitlab token and write in gitlab_token.txt file
-USER_ID=352                                          ## gitlab user id 
-DOMAIN=
+GITLAB_TOKEN=`cat $WORKDIR/gitlab_token.txt`         ## bu variable gitlab_token.txt file-da tanidilacaq ordan oxumasi ucun
+USER_ID=352                                 ## user id
+DOMAIN=gitlab.local
 GITLAB_PAT_URL=https://$DOMAIN/api/v4/users/$USER_ID/personal_access_tokens
 GITLAB_RES_URL=https://$DOMAIN/api/v4/personal_access_tokens
 
@@ -22,7 +22,7 @@ GITLAB_RES_URL=https://$DOMAIN/api/v4/personal_access_tokens
 
 
 
-# Renew kubernetes certifacate function...
+# Kubernetes sertifikatin yenilenmesi ucun yazilan funksiya...
 
 renew_certs(){
 
@@ -32,7 +32,7 @@ renew_certs(){
     echo "HOSTNAME: $HOSTNAME"
     echo ""
 
-    if [ $certs_current_date -le 10 ]
+    if [ $certs_current_date -le 10 ] || [ "$certs_current_date" = "<invali" ]
     then
 
         for nodes in $MASTER_NODES
@@ -64,8 +64,8 @@ renew_certs(){
 
         done
 
-            check_and_fix_configfile                    ## check kubeconfig file function
-            update_gitlab_variable                      ## update variable function
+            check_and_fix_configfile                    ## kubeconfig file yoxlayan funksiya cagrilir
+            update_gitlab_variable                      ## variable update edilmesi ucun funksiya
 
     else
             echo ""
@@ -74,12 +74,12 @@ renew_certs(){
             echo "Expire after $certs_current_date days"
             echo ""
 
-            check_gitlab_token                          ## check gitlab token
+            check_gitlab_token                          ## gitlab token yoxlayan funksiya
     fi
 }
 
 
-# fix kubeconfig file if in kubeconfig file show localhost:8383 fixed it 
+# kubeconfig file daxilinde server hissesinin yoxlanilmasi ucun funksiya
 
 check_and_fix_configfile(){
 
@@ -89,6 +89,10 @@ check_and_fix_configfile(){
             echo ""
             echo "$current_day $ROOT_KUBECONFIG_PATH is okay !!!"
             echo ""
+	    ssh $SSH_USER@$MASTER_IP -t sudo cp -pr $ROOT_KUBECONFIG_PATH $USER_HOME/$CLUSTER_NAME
+            ssh $SSH_USER@$MASTER_IP -t sudo chown $SSH_USER:$SSH_USER $USER_HOME/$CLUSTER_NAME
+            scp $SSH_USER@$MASTER_IP:$USER_HOME/$CLUSTER_NAME $CONFIG_FOLDER/$CLUSTER_NAME
+	    echo ""
 
     else
 
@@ -110,7 +114,7 @@ check_and_fix_configfile(){
     fi
 }
 
-# Gitlab token check...
+# Gitlab token check edilmesi...
 
 check_gitlab_token(){
 
@@ -168,14 +172,14 @@ check_gitlab_token(){
 }
 
 
-# update kube-config variable in gitlab 
+# Gitlab-da olan variable update olunmasi ucun funksiya
 
 update_gitlab_variable(){
 
     GITLAB_API_URL=https://$DOMAIN/api/v4/groups/$GROUP_ID/variables
     KUBECONFIG_CONTENT=$(cat $CONFIG_FOLDER/$CLUSTER_NAME | jq -Rs .)
 
-    check_gitlab_token # check gitlab token expire or not 
+    check_gitlab_token # burada gitlab token yoxlayan funksiya cagrilir
 
     if [ "$response" -eq 200 ]
     then
@@ -202,18 +206,18 @@ update_gitlab_variable(){
 
 }
 
-# send alert to Slack notification 
+# Slack notification gonderilmesi ucun funksiya
 
 slack_notif(){
 
-    SLACK_WEBHOOK_URL=""
+    SLACK_WEBHOOK_URL="webhook_url"
 
     curl -X POST -H 'Content-type: application/json' --data '{"text": "'"$Message"'"}' $SLACK_WEBHOOK_URL
 
 }
 
-
-# this function check all k8s cluster env
+# Bu funksiya ile avis2,eportal ve avisproxy (dev,prep,prod) eyni anda yoxlamasi ucundu.
+# Script elimden geldiyi qeder dinamik etmeye calismisam :))
 
 k8s_clusters(){
 
@@ -226,7 +230,7 @@ k8s_clusters(){
     GROUP_NAME=$7
     MASTER_NODES=`cat $WORKDIR/hosts.txt |grep $8 | awk '{print $1}'`
 
-    remote_server=$(ssh $SSH_USER@$MASTER_IP << 'EOF'
+    remote_server=$(ssh -T $SSH_USER@$MASTER_IP << 'EOF'
 
         certs_current_date=$(sudo /usr/local/bin/kubeadm certs check-expiration 2>&1 | grep admin | awk '{print $7}' | cut -d d -f1)
         KUBECONFIG_PATH="/etc/kubernetes/admin.conf"
@@ -241,30 +245,32 @@ k8s_clusters(){
         echo "CONFIG_SERVER_HOST=$CONFIG_SERVER_HOST"
         echo "CONFIG_SERVER_PORT=$CONFIG_SERVER_PORT"
         echo "HOSTNAME"=$HOSTNAME
-    
+
 
 EOF
 )
 
 while IFS= read -r line; do
-    export "$line"
+    if [[ "$line" == *=* ]]; then
+        export "$line"
+    fi
 done <<< "$remote_server"
 
-renew_certs # this function renew certs 
+renew_certs
 
 echo "=========================================================================================================="
 
 }
 
-# 1. master-1-ip 
-# 2. Cluster-name 
-# 3. HA-IP 
-# 4. HA-PORT 
-# 5. Gitlab-GROUP-ID 
-# 6. Gitlab-Variable-name 
+# 1. master-1-ip
+# 2. Cluster-name
+# 3. HA-IP
+# 4. HA-PORT
+# 5. Gitlab-GROUP-ID
+# 6. Gitlab-Variable-name
 # 7. Gitlab-Group-name
 # 8. name for filter in hosts.txt file
 
 
-# prod
-k8s_clusters "10.0.0.10" "PROD-CLUSTER" "10.0.0.30" "8383" "129" "PROD_KUBE_CONFIG" "e-services" "prod-master-01"
+# develop
+k8s_clusters "master_ip" "cluster_name" "LB_ip" "6443" "group_id" "gitlab_var_name" "group_name" "develop"
